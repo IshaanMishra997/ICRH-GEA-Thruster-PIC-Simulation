@@ -44,7 +44,7 @@ Algorithm:
     LOOP:
         3) Helicon Plasma Generator-refer to papers for ionisation %
         4) Ion, Electron density solver          (Fully kinetic/Hybrid PIC???)
-        5) Potential solver 
+        5) Potential solver
         6) Electric field solver
         7) Move particles
         8) Record exit velocity

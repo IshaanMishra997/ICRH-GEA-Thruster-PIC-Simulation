@@ -1,0 +1,500 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Jan 28 15:48:59 2021
+@author: ishaanmishra
+
+LOG: 
+30/01/2021:  69 lines
+31/01/2021:   0 lines
+01/02/2021: 124 lines
+02/02/2021: 100 lines
+03/02/2021:  39 lines
+04/02/2021:  15 lines
+05/02/2021:   0 lines
+06/02/2021: 105 lines
+07/02/2021:  29 lines
+08/02/2021:  19 lines
+"""
+import numpy as np
+import random
+import math
+import time
+import pylab as pl 
+
+start_time = time.time()
+
+
+#------------------------------SETUP_DEFINITION------------------------------#
+
+
+#mi = 6.6464731e-27 #mass of helium atom in kg
+#mi = 6.6335209e-26 #mass of argon atom in kg
+mi = 2.1801714e-25 #mass of xenon atom in kg
+
+T = 1000 #temperature of stored propellant in Kelvin
+Kb = 1.38064852e-23 # Boltzmann's constant
+eps0 = 8.854187817e-12
+q = 1.602176634e-19 
+me = 9.10938356e-31
+
+n0 = 1e18
+phi0 = 0
+
+
+vth_i = (2*Kb*T/mi)**(1/2)
+vth_e = (2*Kb*T/me)**(1/2)/10
+
+
+
+print("Thermal velocity of ions: ",round(vth_i,2), "m/s")
+
+
+dt = 5e-8
+spwt=10000000
+
+pdot=int(n0*(np.pi*(0.015**2)/2)*vth_i*dt/spwt) # number of ions added per time step (dt)
+print(pdot, 'particles per time interval')
+mdot = pdot*spwt*mi/dt # mass flow rate in kg/sec
+print('mass flow rate: ',round(mdot, 11), 'kg per second')
+
+
+#particle definition
+class Particle:
+    def __init__(self,pos,vel):
+        self.pos=[pos[0],pos[1]]    #xyz position
+        self.vel=[vel[0],vel[1]]
+        self.icrhcheck = False
+
+class Species: 
+    def __init__(self, mass, spwt, charge, vth):
+        self.mass = mass*spwt
+        self.charge = q*spwt
+        self.l = []
+        self.vth = vth
+        self.spwt = spwt
+
+#------------------------------MESH DEFINITION-------------------------------#
+'''
+a) 0 - 50 cm : 1.5 cm high 
+    - magnetic mirror + ICRH 
+    - Magnetic nozzle influence begins 
+b) 50 - 110cm: y = 1.5cm + 5/12x 
+    - physical + magnetic nozzle 
+    - electron extraction 
+c) 110 - 110.1 cm : grid 
+    - electrostatic acceleration 
+    - potential drop = 1200 V
+'''
+
+
+tlen = 1.101 #total length of thruster section in metres 
+thei = 0.265 #total height of thruster section in metres 
+
+nodeno = 0 
+
+def yval(x): 
+    if x<=0.5: 
+        return 1.5e-2
+    elif x<=1.10: 
+        return 1.5e-2 + 5/12*(x-0.5) #5/12 is the slope of the nozzle 
+    elif x<= 1.101: 
+        return 1.5e-2 + 5/12*(1.1-0.5)
+
+
+ld = (eps0*Kb*T/(n0*q*q))**(1/2)
+print('debye length: ', round(ld,9), 'm')
+
+dx = 5e-3
+dy = 5e-3
+
+nx= int(tlen/dx)
+ny = int(thei/dy)
+print(nx, ny)
+mesh=[]
+for i in range(nx): 
+    lx = [] 
+    for j in range(ny): 
+        lx.append(0)
+    mesh.append(lx)
+#print(mesh)
+
+nx_a = int(0.5/dx)
+ny_a = int(0.015/dy)
+
+nx_b = int(tlen/dx)
+ny_b = int()
+
+#volume assignment
+
+volume = mesh
+for i in range(0,nx_a):
+    for j in range(0,ny_a):
+        j_min = j-0.5
+        j_max = j+0.5
+        if (j_min<0): j_min=0
+        if (j_max>ny-1): j_max=ny-1
+        a = 0.5 if (i==0 or i==nx-1) else 1.0
+        #note, this is y*dy for non-boundary nodes
+        volume[i][j] = abs(a*dx*((j_max*dy)**2-(j_min*dy)**2))
+
+for i in range(nx_a, nx_b): 
+    ny_b = int(yval(i*dx)/dy)
+    for j in range(0,ny_b):
+        j_min = j-0.5
+        j_max = j+0.5
+        if (j_min<0): j_min=0
+        if (j_max>ny-1): j_max=ny-1
+        a = 0.5 if (i==0 or i==nx-1) else 1.0
+        #note, this is y*dy for non-boundary nodes
+        volume[i][j] = abs(a*dx*((j_max*dy)**2-(j_min*dy)**2))
+    
+#print(len(volume[int(tlen/dx)-1]))
+
+
+nodelist = [] 
+for i in range(nx): 
+    nodelist.append(0)
+#print(nodelist[0::10])
+def nodeno(nodelist): 
+    global mesh
+    for i in range(len(mesh)): 
+        for j in range(len(mesh[i])):
+            if j*dy <= yval(i*dx):# and volume[i][j] > 0:
+                nodelist[i]+=1
+nodeno(nodelist)
+
+
+#----------------------------------GRAPHING----------------------------------#
+
+
+pl.figure()
+pl.plot (nx,ny, 'r')
+pl.figure(figsize=(9, 3))
+pl.xlabel('z(m)')
+pl.ylabel('r(m)')
+pl.title('Distribution of nodes in thruster setup')
+
+xvals=[]
+yvals=[]
+
+for i in range(len(nodelist)): 
+    for j in range(nodelist[i]): 
+        xvals.append(i*dx)
+        yvals.append(j*dy)
+        
+pl.plot(xvals,yvals, marker="o",  markersize=0)
+pl.show()
+
+
+#---------------------------------FUNCTIONS----------------------------------#
+
+
+def sampleIsotropicVel(vth):
+
+    #pick a random angle
+    theta = 2*math.pi*random.random()
+    
+    #pick a random direction for n[2]
+    R = -1.0+2*random.random()
+    a = math.sqrt(1-R*R)
+    n = (math.cos(theta)*a, math.sin(theta)*a, R)
+    
+    #pick maxwellian velocities
+    vm = np.zeros(2)
+    vm[0:2] = math.sqrt(2)*vth*(2*(random.random()+random.random()+random.random()-1.5))
+    
+    vel = [abs(n[0]*vm[0]), n[1]*vm[1]]
+    return vel
+
+def rebound(particle):
+    x= particle.pos[0]
+    y= particle.pos[1]
+    b = yval(x)
+ 
+    if y >= b and x<= tlen: 
+        dif = y-b
+        particle.pos[1] -= 2*dif
+        particle.vel[1] = particle.vel[1]*-1
+    elif y<=0 and x<=tlen: 
+        dif = -1*y 
+        #print('dif: ' ,dif)
+        particle.pos[1] += 2*dif 
+        particle.vel[1] = particle.vel[1]*-1
+        #print(particle.pos[1])
+    if x<0: 
+        dif = -1*x
+        particle.pos[0] = dif
+        particle.vel[0] *= -1
+        
+        
+def generator(species): 
+    y = random.random() * 0.015  
+    x = 0 
+    pos = [x,y]
+    vel = sampleIsotropicVel(species.vth)
+    species.l.append(Particle(pos, vel))
+
+
+rho = mesh
+ni = mesh
+rhobar = 448516.58370602375
+rhoswitch = False
+def density(species): 
+    global rho, volume, eps0, mesh
+    rho = []
+    for i in range(nx): 
+        lx = [] 
+        for j in range(ny): 
+            lx.append(0)
+        rho.append(lx)
+    
+    #rhobar = 0 
+    for k in species.l:  
+        i = math.floor(k.pos[0]/dx)
+        j = math.floor(k.pos[1]/dy)
+        hx = k.pos[0] - i*dx 
+        hy = k.pos[1] - j*dy
+        #print(i,j,hx,hy, dx-hx, dy-hy)
+        if j*dy <= yval(i*dx) and i<nx-1:# and volume[i][j] > 0:
+            rho[i][j]+=abs((dx-hx)*(dy-hy)/(dx*dy)*species.spwt)
+            #print((dx-hx)*(dy-hy)/(dx*dy)*species.spwt)
+            if rho[i][j] <0: 
+                rho[i][j]=0
+        if j*dy <= yval(i*dx) and i < nx-1:
+            rho[i+1][j] += abs(hx * (dy-hy)/(dx*dy)*species.spwt)
+            if rho[i+1][j] <0: 
+                rho[i+1][j]=0
+        if (j+1)*dy <= yval(i*dx) and i<nx-1:
+            rho[i][j+1] += abs((dx-hx)*hy/(dx*dy)*species.spwt)
+            if rho[i][j+1] <0: 
+                rho[i][j+1]=0
+        if (j+1)*dy <= yval(i*dx) and i < nx-1:
+            rho[i+1][j+1] += abs(hx*hy/(dx*dy)*species.spwt)#*species.charge
+            if rho[i+1][j+1] <0: 
+                rho[i+1][j+1]=0
+        #avg += round(((rho[i][j]+ rho[i+1][j]+ rho[i][j+1]+ rho[i+1][j+1])/4), 2)
+
+    
+phi=mesh
+def QNpotentialsolver(rho):  
+    #Quasi-Neutral Boltzmann potential solver. QN Assumption; dx,dy >> ld
+    global phi, rhobar
+    phi = []
+    for i in range(nx): 
+        lx = [] 
+        for j in range(ny): 
+            lx.append(0)
+        phi.append(lx)
+    for i2 in range(len(phi)): 
+        for j in range(len(phi[i2])): 
+            if j*dy <= yval(i2*dx): 
+                if rho[i2][j]<=0: 
+                    phi[i2][j]=0
+                else: 
+                    phi[i2][j] = phi0 + (Kb*T)/q*math.log(rho[i2][j]/rhobar) 
+                    #print(phi[i2][j])
+
+  
+efx = mesh
+efy = mesh
+def electric_field(phi): 
+    global efx, efy
+    for i in range(len(efy)):
+        tn = nodelist[i] # no. of nodes in column
+        for j in range(1,tn-1): 
+            efy[i][j] = (phi[i][j-1] - phi[i][j+1])/(2*dy)
+            #if efy[i][j]!=0:
+                #print(efy[i][j])
+        efy[i][0] = (phi[i][0] - phi[i][1])/dy
+        #print(efy[0][0])
+        efy[i][tn-1] = (phi[i][tn-2] - phi[i][tn-2])/dy
+            
+    for i in range(1,len(efx)-1):
+        tn = nodelist[i] # total no. of nodes in column
+        for j in range(1, tn): 
+            if j ==tn-1 and i>=500 and tn>nodelist[i-1]: 
+                efx[i][tn-1] = (phi[i][tn-1] - phi[i+1][tn-1])/dx
+                
+            else:# j ==tn-1 and i<=500: 
+                efx[i][j] = (phi[i-1][j] - phi[i+1][j])/(2*dx)
+                #if efx[i][j]!=0:
+                    #print(efx[i][j])
+    for j in range(nodelist[0]): 
+        efx[0][j] = (phi[0][j] - phi[1][j])/dx
+    k = len(nodelist) - 1
+    for j in range(nodelist[k]): 
+        efx[k][j] = (phi[k-1][j] - phi[k][j])/dx
+           
+    
+
+def updatevel(k, species): 
+    global efx, efy
+    #v += a*dt
+    i = math.floor(k.pos[0]/dx)
+    j = math.floor(k.pos[1]/dy)
+
+    hx = k.pos[0] - i*dx 
+    hy = k.pos[1] - j*dy
+    A = dx*dy
+    if j<ny-1 and i<nx-1:
+        ax = efx[i][j]*(dx-hx)*(dy-hy)/A + efx[i+1][j]*hx*(dy-hy)/A + efx[i][j+1]*(dx-hx)*hy/A + efx[i+1][j+1]*hx*hy/A
+        ay = efy[i][j]*(dx-hx)*(dy-hy)/A + efy[i+1][j]*hx*(dy-hy)/A + efy[i][j+1]*(dx-hx)*hy/A + efy[i+1][j+1]*hx*hy/A
+   
+        ax = species.charge*ax/species.mass/10
+        ay = species.charge*ay/species.mass/10
+    else: 
+        ax = ay = 0
+   
+    
+    return([ax,ay])
+
+
+def push(particle, a):
+    global dt 
+    #x 
+    particle.vel[0] += 0.5*a[0] * dt
+    particle.pos[0] += particle.vel[0] * dt
+    #y
+    particle.vel[1] += 0.5*a[1] * dt
+    particle.pos[1] += particle.vel[1] * dt
+  
+    
+def ICRH(particle): 
+    #B=1.5#Tesla, based on the VASIMR experiment in 
+    '''Bering, Edgar & Brukardt, Michael & Squire, J. & Glover, Timothy & Jacobson, Verlin & McCaskill, Greg. 
+    (2006). Recent Improvements In Ionization Costs and Ion Cyclotron Heating Efficiency in The VASMIR Engine. 
+    Collection of Technical Papers - 44th AIAA Aerospace Sciences Meeting. 13. 10.2514/6.2006-766. '''
+    #f = q*B/mi
+    #print('AAAAA', (((particle.vel[0]**2 + particle.vel[1]**2))**(1/2))/(vth_i))
+    E = 2.7237e-18*10#J
+    KE = (particle.vel[0]**2)/2*mi
+    print(particle.vel[0])
+    KE = 1/2*mi*(particle.vel[0]**2) + E
+    particle.vel[0] = (2*KE/mi)**(1/2)# /2 He
+    print(particle.vel[0])
+    particle.icrhcheck = True
+
+
+def GEA(particle): 
+    #Gridded Electrostatic Accelerator 
+    V = 1500
+    KE = 1/2*mi*(particle.vel[0]**2) + ions.charge*V/10000000
+    particle.vel[0] = (2*KE/mi)**(1/2)*0.7 # Ar: /1.4, He: /4, Xe: *0.7
+
+
+v_ex = 0
+vf_x = 0
+vf_y = 0
+n_ex = 1
+Isp = 0
+
+
+def vlogger(particle): 
+    global v_ex, n_ex, vf_x, vf_y, Isp
+    print('final',particle.vel[0])
+    
+    #GEA(particle)
+    #print(particle.vel[0])
+    vf_x = ((n_ex-1)*vf_x + particle.vel[0])/n_ex
+    vf_y = ((n_ex-1)*vf_y + particle.vel[1])/n_ex
+    v_ex = ((n_ex-1)*v_ex + (particle.vel[0]**2 + particle.vel[1]**2)**(1/2))/n_ex
+    n_ex+=1
+    Isp = v_ex/9.806
+    
+'''
+available energy per ion is reduced compared to last year, but the booster efficiency of the ICRH process has
+increased. Ion energization of ~17 eV/ion has been demonstrated in this higher-flux plasma.
+'''
+
+
+#------------------------------------LOOP------------------------------------#   
+
+
+ions= Species(mi, spwt, q, vth_i)
+#electrons = Species(me, spwt, -1*q, vth_e)
+counter = 1
+for i in range(10): 
+    generator(ions)
+    #ions.l[0].vel =[546,-110 ]
+    #generator(electrons)
+
+print('Initial Positions: ')
+for i in ions.l: 
+    print(i.pos)
+print('Initial Velocity components: ')
+for i in ions.l: 
+    print(i.vel)
+
+loopcount= 100000
+ 
+
+for i in range(loopcount):
+    k = len(ions.l)
+    if k>0:
+        j=0
+        while j<k: 
+            if (not ions.l[j].icrhcheck) and ions.l[j].pos[0]>=0.5: 
+                ICRH(ions.l[j])
+            push(ions.l[j], updatevel(ions.l[j], ions))
+            if ions.l[j].pos[0]>tlen: 
+                vlogger(ions.l[j])
+                del ions.l[j] 
+                print(str(len(ions.l)) ,'ions left in chamber')
+                k-=1 
+                j-=1
+            else: 
+                rebound(ions.l[j])
+                rebound(ions.l[j])
+                #print(ions.l[j].pos[1])
+            
+            j+=1
+        
+        density(ions)
+        #print(rhobar)
+        rhocopy = rho
+        QNpotentialsolver(rhocopy)
+        efx = mesh
+        efy = mesh
+        electric_field(phi)
+        '''
+        k2 = len(electrons.l)    
+        j2=0
+        while j2<k2: 
+            push(electrons.l[j2], [0,0])
+            if electrons.l[j2].pos[0]>tlen: 
+                #vlogger(electrons.l[j2])
+                del electrons.l[j2] 
+                #print(str(100 - len(electrons.l)) + '%')
+                k2-=1 
+                j2-=1
+            else: 
+                rebound(electrons.l[j2])  
+                
+            j2+=1
+        '''
+        
+    #print(ions.l[0].vel)
+    if (i+1)*100/loopcount == int ((i+1)*100/loopcount): 
+        print(str(int ((i+1)*100/loopcount))+'%')
+        #print(mesh[10][10])
+'''        
+print('Final Positions: ')
+for i in ions.l: 
+    print(i.pos)
+print('Final Velocity components: ')
+for i in ions.l: 
+    print(i.vel)
+'''
+#----------------------------------READINGS----------------------------------# 
+
+
+print('Exit velocity: ', round(v_ex, 1) , 'm/s')
+print('Specific Impulse (Isp): ', round(Isp, 1), 's')
+print('vx = ', vf_x, 'm/s')
+print('vy = ', vf_y, 'm/s')
+print('number of ion particle class exits: ', n_ex -1)
+print("--- %s seconds ---" % (round(time.time() - start_time,1)))  
+
+
+#----------------------------------------------------------------------------#      
